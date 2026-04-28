@@ -547,7 +547,7 @@ function sortResults(results) {
     : by === "effects"
       ? b.effects.length - a.effects.length
       : by === "discovery"
-        ? b.discoveryPriority - a.discoveryPriority || b.value - a.value
+        ? b.discoveryPriority - a.discoveryPriority || b.value - a.value || a.items.length - b.items.length
         : a.items.map(i => i.name).join(",").localeCompare(b.items.map(i => i.name).join(",")));
 }
 
