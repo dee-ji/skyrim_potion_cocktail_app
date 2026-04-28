@@ -449,6 +449,7 @@ function recipeFrom(names) {
   const type = pos > neg ? "Potion" : neg > pos ? "Poison" : "Mixed";
   const discoveries = [];
   const discoveryCounts = {};
+  const discoveryRanks = [];
   for (const item of items) {
     for (const effect of effects) {
       if (item.effects.includes(effect) && !known[item.name]?.has(effect)) {
@@ -463,12 +464,24 @@ function recipeFrom(names) {
       return score;
     }
     const rarityWeight = item.rarity_rank + 1;
+    discoveryRanks.push(item.rarity_rank);
     return score + discoveriesForItem * discoveriesForItem * rarityWeight;
+  }, 0);
+  const highestDiscoveredRarity = discoveryRanks.length ? Math.max(...discoveryRanks) : -1;
+  const rarityWastePenalty = items.reduce((penalty, item) => {
+    if ((discoveryCounts[item.name] || 0) > 0) {
+      return penalty;
+    }
+    if (item.rarity_rank <= highestDiscoveredRarity) {
+      return penalty;
+    }
+    const rarityGap = item.rarity_rank - highestDiscoveredRarity;
+    return penalty + (item.rarity_rank + 1) * (rarityGap + 1) * 10;
   }, 0);
   const skill = Number($("alchemySkill").value || 15);
   const mult = 1 + (skill - 15) / 120;
   const value = Math.round(effects.reduce((sum, effect) => sum + (BASE_VALUE[effect] || 18), 0) * mult * (items.length === 3 ? 1.15 : 1));
-  return {items, effects, type, discoveries, discoveryPriority, value};
+  return {items, effects, type, discoveries, discoveryPriority: discoveryPriority - rarityWastePenalty, value};
 }
 
 function combos(arr, k) {
@@ -516,7 +529,7 @@ function sortResults(results) {
     : by === "effects"
       ? b.effects.length - a.effects.length
       : by === "discovery"
-        ? b.discoveryPriority - a.discoveryPriority || b.discoveries.length - a.discoveries.length || b.value - a.value
+        ? b.discoveryPriority - a.discoveryPriority || b.value - a.value
         : a.items.map(i => i.name).join(",").localeCompare(b.items.map(i => i.name).join(",")));
 }
 
@@ -560,6 +573,7 @@ async function markRecipeCreated(idx) {
   await loadKnown();
   await loadInventory();
   renderCharacterInventory();
+  renderInventory();
   renderKnownList();
   renderManualKnownEffects();
   rerenderCurrentResults();
