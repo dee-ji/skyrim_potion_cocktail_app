@@ -188,6 +188,71 @@ def known_effects(character_id: int) -> dict[str, Any]:
     return {"known_effects": data}
 
 
+class KnownEffectsUpdate(BaseModel):
+    ingredient_name: str = Field(min_length=1)
+    effect_names: list[str] = Field(min_length=1)
+
+
+@app.post("/api/characters/{character_id}/known-effects")
+def add_known_effects(character_id: int, payload: KnownEffectsUpdate) -> dict[str, Any]:
+    with db() as conn:
+        if not conn.execute("SELECT 1 FROM characters WHERE id=?", (character_id,)).fetchone():
+            raise HTTPException(404, "Character not found")
+        ingredient = conn.execute("SELECT id FROM ingredients WHERE name=?", (payload.ingredient_name,)).fetchone()
+        if not ingredient:
+            raise HTTPException(404, "Ingredient not found")
+        placeholders = ",".join("?" for _ in payload.effect_names)
+        effect_rows = rows(conn.execute(
+            f"""
+            SELECT e.id, e.name
+            FROM effects e
+            JOIN ingredient_effects ie ON ie.effect_id = e.id
+            WHERE ie.ingredient_id = ? AND e.name IN ({placeholders})
+            """,
+            (ingredient["id"], *payload.effect_names),
+        ))
+        if len(effect_rows) != len(set(payload.effect_names)):
+            raise HTTPException(400, "One or more effects do not belong to that ingredient")
+        before_changes = conn.total_changes
+        for effect in effect_rows:
+            conn.execute(
+                "INSERT OR IGNORE INTO character_known_effects(character_id, ingredient_id, effect_id) VALUES (?, ?, ?)",
+                (character_id, ingredient["id"], effect["id"]),
+            )
+        return {"ok": True, "marked": conn.total_changes - before_changes}
+
+
+@app.delete("/api/characters/{character_id}/known-effects")
+def remove_known_effects(character_id: int, payload: KnownEffectsUpdate) -> dict[str, Any]:
+    with db() as conn:
+        if not conn.execute("SELECT 1 FROM characters WHERE id=?", (character_id,)).fetchone():
+            raise HTTPException(404, "Character not found")
+        ingredient = conn.execute("SELECT id FROM ingredients WHERE name=?", (payload.ingredient_name,)).fetchone()
+        if not ingredient:
+            raise HTTPException(404, "Ingredient not found")
+        placeholders = ",".join("?" for _ in payload.effect_names)
+        effect_rows = rows(conn.execute(
+            f"""
+            SELECT e.id, e.name
+            FROM effects e
+            JOIN ingredient_effects ie ON ie.effect_id = e.id
+            WHERE ie.ingredient_id = ? AND e.name IN ({placeholders})
+            """,
+            (ingredient["id"], *payload.effect_names),
+        ))
+        if len(effect_rows) != len(set(payload.effect_names)):
+            raise HTTPException(400, "One or more effects do not belong to that ingredient")
+        before_changes = conn.total_changes
+        conn.execute(
+            f"""
+            DELETE FROM character_known_effects
+            WHERE character_id = ? AND ingredient_id = ? AND effect_id IN ({",".join("?" for _ in effect_rows)})
+            """,
+            (character_id, ingredient["id"], *(effect["id"] for effect in effect_rows)),
+        )
+        return {"ok": True, "removed": conn.total_changes - before_changes}
+
+
 class CreatedRecipe(BaseModel):
     ingredient_names: list[str]
     effect_names: list[str]
