@@ -69,12 +69,14 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
 .rarity-border-very-rare{border-left-color:#e4b861}
 .inventory-manager{min-height:280px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:#0d0b08}
 .inventory-item{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px;border-bottom:1px solid rgba(214,173,86,.12);border-left:4px solid transparent}
+.inventory-item:hover{background:rgba(255,255,255,.03)}
 .inventory-meta{display:flex;flex-direction:column;gap:4px;min-width:0}
 .inventory-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 .inventory-count{font-weight:800;color:var(--gold2)}
 .mini{width:auto;padding:6px 10px;font-size:.82rem}
 .stretch-card{display:flex;flex-direction:column;max-height:700px}
 .stretch-card .fill-panel{flex:1;max-height:420px;overflow:auto}
+.selected-item{outline:1px solid var(--gold2);background:rgba(214,173,86,.08)}
 </style>
 </head>
 <body>
@@ -205,6 +207,7 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
     <section class="card span6">
       <h2>Known Effects</h2>
       <p class="small">Green effects are known for the selected character. Red effects are still outstanding.</p>
+      <div id="knownProgress" class="status">Select a character to view discovery progress.</div>
       <div class="row">
         <button id="markFirstKnown">Mark first effect known</button>
         <button id="clearClientKnown">Refresh from database</button>
@@ -512,12 +515,19 @@ function renderCharacterInventory() {
     ? `Tracked ingredients: ${items.length}. Total items: ${items.reduce((sum, item) => sum + item.quantity, 0)}.`
     : "Select a character to manage inventory.";
   $("characterInventoryList").innerHTML = items.length
-    ? items.map(item => `<div class="inventory-item ${rarityBorderClass(item)}"><div class="inventory-meta"><div class="ingredient-name"><b>${item.name}</b>${rarityBadge(item)}</div><span class="small">${item.source}</span></div><div class="inventory-actions"><span class="inventory-count">x${item.quantity}</span><button class="mini" onclick="adjustInventory('${item.name.replaceAll("'", "\\'")}',1)">+1</button><button class="mini" onclick="adjustInventory('${item.name.replaceAll("'", "\\'")}',-1)">-1</button></div></div>`).join("")
+    ? items.map(item => `<div class="inventory-item ${rarityBorderClass(item)} ${$("inventoryIngredient").value === item.name ? "selected-item" : ""}" data-inventory-name="${item.name}"><div class="inventory-meta"><div class="ingredient-name"><b>${item.name}</b>${rarityBadge(item)}</div><span class="small">${item.source}</span></div><div class="inventory-actions"><span class="inventory-count">x${item.quantity}</span><button class="mini" onclick="adjustInventory('${item.name.replaceAll("'", "\\'")}',1); event.stopPropagation();">+1</button><button class="mini" onclick="adjustInventory('${item.name.replaceAll("'", "\\'")}',-1); event.stopPropagation();">-1</button></div></div>`).join("")
     : '<div class="small">No ingredients tracked yet for this character.</div>';
   $("inventorySetQty").value = inventory[$("inventoryIngredient").value] ?? 0;
 }
 
 function renderKnownList() {
+  const totalEffects = INGREDIENTS.length * 4;
+  const knownEffectsCount = INGREDIENTS.reduce((sum, ingredient) => sum + (known[ingredient.name]?.size || 0), 0);
+  const knownIngredientsCount = INGREDIENTS.filter(ingredient => (known[ingredient.name]?.size || 0) === 4).length;
+  const completion = totalEffects ? Math.round((knownEffectsCount / totalEffects) * 1000) / 10 : 0;
+  $("knownProgress").textContent = activeCharacterId
+    ? `Discovery progress: ${knownEffectsCount}/${totalEffects} effects known (${completion}%). Fully solved ingredients: ${knownIngredientsCount}/${INGREDIENTS.length}.`
+    : "Select a character to view discovery progress.";
   $("knownList").innerHTML = INGREDIENTS.map(ingredient => `<div class="ingredient-row ${rarityBorderClass(ingredient)}"><div class="ingredient-name"><b>${ingredient.name}</b>${rarityBadge(ingredient)}<span class="small">${ingredient.source}</span></div>${ingredient.effects.map(effect => `<span class="pill ${effectClass(ingredient, effect)}">${effect}</span>`).join(" ")}</div>`).join("");
 }
 
@@ -661,6 +671,7 @@ $("ing2").addEventListener("change", () => syncDirectRecipeOptions("ing2"));
 $("ing3").addEventListener("change", () => syncDirectRecipeOptions("ing3"));
 $("inventoryIngredient").addEventListener("change", () => {
   $("inventorySetQty").value = inventory[$("inventoryIngredient").value] ?? 0;
+  renderCharacterInventory();
 });
 
 $("checkBtn").onclick = () => {
@@ -740,6 +751,18 @@ $("inventoryList").addEventListener("change", event => {
   } else {
     selectedInventoryNames.delete(target.value);
   }
+});
+
+$("characterInventoryList").addEventListener("click", event => {
+  const itemRow = event.target.closest("[data-inventory-name]");
+  if (!itemRow) {
+    return;
+  }
+  const name = itemRow.getAttribute("data-inventory-name");
+  $("inventoryIngredient").value = name;
+  $("inventorySetQty").value = inventory[name] ?? 0;
+  $("inventoryDelta").value = 1;
+  renderCharacterInventory();
 });
 
 $("addCharacterBtn").onclick = async () => {
