@@ -271,6 +271,7 @@ let inventory = {};
 let selectedInventoryNames = new Set();
 let activeCharacterId = null;
 let currentResults = [];
+let currentResultsContext = {type: "manual"};
 let ingredientByName = {};
 let pairEffectsByKey = {};
 let visibleResultsCount = 0;
@@ -522,6 +523,23 @@ function generateTripleRecipes(names) {
   return results;
 }
 
+function buildInventoryResults() {
+  const names = [...selectedInventoryNames];
+  const results = [];
+  if ($("includePairs").checked) {
+    for (const combo of combos(names, 2)) {
+      const result = recipeFrom(combo);
+      if (result) {
+        results.push(result);
+      }
+    }
+  }
+  if ($("includeTriples").checked) {
+    results.push(...generateTripleRecipes(names));
+  }
+  return results;
+}
+
 function sortResults(results) {
   const by = $("sortBy").value;
   return results.sort((a, b) => by === "value"
@@ -534,14 +552,25 @@ function sortResults(results) {
 }
 
 function rerenderCurrentResults() {
+  if (currentResultsContext.type === "inventory") {
+    renderResults(buildInventoryResults());
+    return;
+  }
   if (currentResults.length) {
     renderResults(currentResults.map(result => recipeFrom(result.items.map(item => item.name))).filter(Boolean));
   }
 }
 
+function inventoryZeroedOut(previousInventory) {
+  return Object.entries(previousInventory).some(([name, quantity]) => quantity > 0 && (inventory[name] ?? 0) === 0);
+}
+
 function renderVisibleResults() {
   const visibleResults = currentResults.slice(0, visibleResultsCount);
-  $("resultsBody").innerHTML = visibleResults.map((result, idx) => `<tr class="${result.value >= 100 ? "high" : ""} ${result.discoveries.length ? "discover" : ""}"><td>${result.items.map(i => `<div class="ingredient-name"><b>${i.name}</b>${rarityBadge(i)}</div>`).join("")}</td><td>${result.type}</td><td>${result.effects.map(effect => `<span class="pill">${effect}</span>`).join(" ")}</td><td>${result.discoveries.length ? result.discoveries.map(discovery => `<span class="pill new">${discovery}</span>`).join(" ") : '<span class="small">None</span>'}</td><td>${result.value} gold<br><span class="small">Estimated value - not exact in-game price</span></td><td>${result.items.map(i => `${i.name}: ${i.source}<br><span class="small">${i.rarity_label}</span>`).join("<br>")}</td><td><button class="tinybtn" onclick="markRecipeCreated(${idx})">Created</button></td></tr>`).join("");
+  $("resultsBody").innerHTML = visibleResults.map((result, idx) => {
+    const sortedItems = [...result.items].sort((a, b) => a.name.localeCompare(b.name));
+    return `<tr class="${result.value >= 100 ? "high" : ""} ${result.discoveries.length ? "discover" : ""}"><td>${sortedItems.map(i => `<div class="ingredient-name"><b>${i.name}</b>${rarityBadge(i)}</div>`).join("")}</td><td>${result.type}</td><td>${result.effects.map(effect => `<span class="pill">${effect}</span>`).join(" ")}</td><td>${result.discoveries.length ? result.discoveries.map(discovery => `<span class="pill new">${discovery}</span>`).join(" ") : '<span class="small">None</span>'}</td><td>${result.value} gold<br><span class="small">Estimated value - not exact in-game price</span></td><td>${sortedItems.map(i => `${i.name}: ${i.source}<br><span class="small">${i.rarity_label}</span>`).join("<br>")}</td><td><button class="tinybtn" onclick="markRecipeCreated(${idx})">Created</button></td></tr>`;
+  }).join("");
   if (currentResults.length > visibleResultsCount) {
     $("resultsFooter").style.display = "";
     $("resultsFooter").textContent = `Showing ${visibleResultsCount} of ${currentResults.length} results.`;
@@ -708,6 +737,7 @@ async function adjustInventory(name, delta) {
     return;
   }
   try {
+    const previousInventory = {...inventory};
     await api(`/api/characters/${activeCharacterId}/inventory/adjust`, {
       method: "POST",
       body: JSON.stringify({ingredient_name: name, delta}),
@@ -715,7 +745,9 @@ async function adjustInventory(name, delta) {
     await loadInventory();
     renderCharacterInventory();
     renderInventory();
-    rerenderCurrentResults();
+    if (inventoryZeroedOut(previousInventory)) {
+      rerenderCurrentResults();
+    }
   } catch (error) {
     alert(error.message);
   }
@@ -726,6 +758,7 @@ async function setInventoryQuantity(name, quantity) {
     alert("Select a character first.");
     return;
   }
+  const previousInventory = {...inventory};
   await api(`/api/characters/${activeCharacterId}/inventory`, {
     method: "PUT",
     body: JSON.stringify({ingredient_name: name, quantity}),
@@ -733,7 +766,9 @@ async function setInventoryQuantity(name, quantity) {
   await loadInventory();
   renderCharacterInventory();
   renderInventory();
-  rerenderCurrentResults();
+  if (inventoryZeroedOut(previousInventory)) {
+    rerenderCurrentResults();
+  }
 }
 
 async function init() {
@@ -760,6 +795,7 @@ $("inventoryIngredient").addEventListener("change", () => {
 $("checkBtn").onclick = () => {
   const names = [$("ing1").value, $("ing2").value, $("ing3").value].filter(Boolean);
   const result = recipeFrom(names);
+  currentResultsContext = {type: "direct"};
   renderResults(result ? [result] : []);
   $("directOutput").textContent = result ? "Recipe found." : "No valid recipe: at least two ingredients must share an effect.";
 };
@@ -780,6 +816,7 @@ $("showCombosBtn").onclick = () => {
       results.push(result);
     }
   }
+  currentResultsContext = {type: "combos", first};
   renderResults(results);
 };
 
@@ -803,20 +840,8 @@ $("clearInventory").onclick = () => {
 };
 
 $("generateInventory").onclick = () => {
-  const names = [...selectedInventoryNames];
-  const results = [];
-  if ($("includePairs").checked) {
-    for (const combo of combos(names, 2)) {
-      const result = recipeFrom(combo);
-      if (result) {
-        results.push(result);
-      }
-    }
-  }
-  if ($("includeTriples").checked) {
-    results.push(...generateTripleRecipes(names));
-  }
-  renderResults(results);
+  currentResultsContext = {type: "inventory"};
+  renderResults(buildInventoryResults());
 };
 
 $("inventoryList").addEventListener("change", event => {
