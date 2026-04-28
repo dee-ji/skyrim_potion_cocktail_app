@@ -88,14 +88,8 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
       <h2>Filters</h2>
       <label>Search ingredient</label>
       <input id="searchBox" placeholder="Type to filter...">
-      <label>DLC / Source</label>
-      <select id="dlcFilter">
-        <option>All</option>
-        <option>Skyrim</option>
-        <option>Dawnguard</option>
-        <option>Hearthfire</option>
-        <option>Dragonborn</option>
-      </select>
+      <label>Game / DLC / Creation</label>
+      <select id="dlcFilter"></select>
       <div class="row">
         <div>
           <label>Alchemy skill</label>
@@ -272,6 +266,23 @@ let inventory = {};
 let selectedInventoryNames = new Set();
 let activeCharacterId = null;
 let currentResults = [];
+const SOURCE_ORDER = [
+  "Skyrim",
+  "Skyrim Quest",
+  "Dawnguard",
+  "Hearthfire",
+  "Dragonborn",
+  "_ResourcePack.esl",
+  "Bittercup",
+  "Fishing",
+  "Forgotten Seasons",
+  "Goblins",
+  "Plague of the Dead",
+  "Rare Curios",
+  "Saints & Seducers",
+  "Spell Knight Armor",
+  "The Cause",
+];
 const POSITIVE = new Set(["Cure Disease","Fortify Alteration","Fortify Barter","Fortify Block","Fortify Carry Weight","Fortify Conjuration","Fortify Destruction","Fortify Enchanting","Fortify Health","Fortify Heavy Armor","Fortify Illusion","Fortify Light Armor","Fortify Lockpicking","Fortify Magicka","Fortify Marksman","Fortify One-handed","Fortify Pickpocket","Fortify Restoration","Fortify Smithing","Fortify Sneak","Fortify Stamina","Fortify Two-handed","Invisibility","Paralysis","Regenerate Health","Regenerate Magicka","Regenerate Stamina","Resist Fire","Resist Frost","Resist Magic","Resist Poison","Resist Shock","Restore Health","Restore Magicka","Restore Stamina","Waterbreathing"]);
 const NEGATIVE = new Set(["Damage Health","Damage Magicka","Damage Magicka Regen","Damage Stamina","Damage Stamina Regen","Fear","Frenzy","Lingering Damage Health","Lingering Damage Magicka","Lingering Damage Stamina","Ravage Health","Ravage Magicka","Ravage Stamina","Slow","Weakness to Fire","Weakness to Frost","Weakness to Magic","Weakness to Poison","Weakness to Shock"]);
 const BASE_VALUE = {Paralysis:160,Invisibility:140,Slow:120,"Damage Magicka Regen":105,"Fortify Carry Weight":95,Waterbreathing:90,"Damage Health":55,"Ravage Health":50,"Lingering Damage Health":65,"Fortify Health":55,"Fortify Magicka":55,"Regenerate Magicka":50};
@@ -288,6 +299,22 @@ function filteredIngredients() {
   const q = $("searchBox").value.toLowerCase();
   const source = $("dlcFilter").value;
   return INGREDIENTS.filter(i => (source === "All" || i.source === source) && i.name.toLowerCase().includes(q));
+}
+
+function populateSourceFilter() {
+  const old = $("dlcFilter").value || "All";
+  const sources = [...new Set(INGREDIENTS.map(ingredient => ingredient.source))].sort((a, b) => {
+    const aIdx = SOURCE_ORDER.indexOf(a);
+    const bIdx = SOURCE_ORDER.indexOf(b);
+    if (aIdx !== -1 || bIdx !== -1) {
+      return (aIdx === -1 ? SOURCE_ORDER.length : aIdx) - (bIdx === -1 ? SOURCE_ORDER.length : bIdx);
+    }
+    return a.localeCompare(b);
+  });
+  $("dlcFilter").innerHTML = '<option value="All">All</option>' + sources.map(source => `<option value="${source}">${source}</option>`).join("");
+  if ([...$("dlcFilter").options].some(option => option.value === old)) {
+    $("dlcFilter").value = old;
+  }
 }
 
 function fillSelect(select, includeBlank = false) {
@@ -619,6 +646,7 @@ async function setInventoryQuantity(name, quantity) {
 
 async function init() {
   INGREDIENTS = (await api("/api/ingredients")).ingredients;
+  populateSourceFilter();
   validate();
   refreshIngredientUI();
   await loadCharacters();
