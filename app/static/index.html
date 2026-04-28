@@ -251,6 +251,8 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
           <tbody id="resultsBody"></tbody>
         </table>
       </div>
+      <div id="resultsFooter" class="status" style="display:none"></div>
+      <button id="showMoreResultsBtn" style="display:none;margin-top:10px">Show more results</button>
     </section>
 
     <section class="card span12">
@@ -269,6 +271,10 @@ let inventory = {};
 let selectedInventoryNames = new Set();
 let activeCharacterId = null;
 let currentResults = [];
+let ingredientByName = {};
+let pairEffectsByKey = {};
+let visibleResultsCount = 0;
+const RESULTS_PAGE_SIZE = 200;
 const SOURCE_ORDER = [
   "Skyrim",
   "Skyrim Quest",
@@ -296,6 +302,28 @@ async function api(path, opts = {}) {
     throw new Error(await res.text());
   }
   return res.json();
+}
+
+function pairKey(leftName, rightName) {
+  return leftName < rightName ? `${leftName}|${rightName}` : `${rightName}|${leftName}`;
+}
+
+function buildIngredientIndexes() {
+  ingredientByName = Object.fromEntries(INGREDIENTS.map(ingredient => [
+    ingredient.name,
+    {...ingredient, effectSet: new Set(ingredient.effects)},
+  ]));
+  pairEffectsByKey = {};
+  for (let i = 0; i < INGREDIENTS.length; i += 1) {
+    for (let j = i + 1; j < INGREDIENTS.length; j += 1) {
+      const left = ingredientByName[INGREDIENTS[i].name];
+      const right = ingredientByName[INGREDIENTS[j].name];
+      const sharedEffects = left.effects.filter(effect => right.effectSet.has(effect));
+      if (sharedEffects.length) {
+        pairEffectsByKey[pairKey(left.name, right.name)] = sharedEffects;
+      }
+    }
+  }
 }
 
 function filteredIngredients() {
@@ -395,20 +423,24 @@ function selectedManualEffects() {
 }
 
 function recipeFrom(names) {
-  const items = names.map(name => INGREDIENTS.find(i => i.name === name)).filter(Boolean);
-  if (items.length < 2) {
-    return null;
-  }
   if (new Set(names).size !== names.length) {
     return null;
   }
-  const counts = {};
-  for (const item of items) {
-    for (const effect of item.effects) {
-      counts[effect] = (counts[effect] || 0) + 1;
-    }
+  const items = names.map(name => ingredientByName[name]).filter(Boolean);
+  if (items.length < 2 || items.length !== names.length) {
+    return null;
   }
-  const effects = Object.keys(counts).filter(effect => counts[effect] >= 2);
+  let effects = pairEffectsByKey[pairKey(items[0].name, items[1].name)] || [];
+  if (items.length === 3) {
+    const combinedEffects = new Set(effects);
+    for (const effect of pairEffectsByKey[pairKey(items[0].name, items[2].name)] || []) {
+      combinedEffects.add(effect);
+    }
+    for (const effect of pairEffectsByKey[pairKey(items[1].name, items[2].name)] || []) {
+      combinedEffects.add(effect);
+    }
+    effects = [...combinedEffects];
+  }
   if (!effects.length) {
     return null;
   }
@@ -456,6 +488,27 @@ function combos(arr, k) {
   return out;
 }
 
+function generateTripleRecipes(names) {
+  const results = [];
+  for (let i = 0; i < names.length; i += 1) {
+    for (let j = i + 1; j < names.length; j += 1) {
+      if (!pairEffectsByKey[pairKey(names[i], names[j])]) {
+        continue;
+      }
+      for (let k = j + 1; k < names.length; k += 1) {
+        if (!pairEffectsByKey[pairKey(names[i], names[k])] && !pairEffectsByKey[pairKey(names[j], names[k])]) {
+          continue;
+        }
+        const result = recipeFrom([names[i], names[j], names[k]]);
+        if (result) {
+          results.push(result);
+        }
+      }
+    }
+  }
+  return results;
+}
+
 function sortResults(results) {
   const by = $("sortBy").value;
   return results.sort((a, b) => by === "value"
@@ -473,10 +526,25 @@ function rerenderCurrentResults() {
   }
 }
 
+function renderVisibleResults() {
+  const visibleResults = currentResults.slice(0, visibleResultsCount);
+  $("resultsBody").innerHTML = visibleResults.map((result, idx) => `<tr class="${result.value >= 100 ? "high" : ""} ${result.discoveries.length ? "discover" : ""}"><td>${result.items.map(i => `<div class="ingredient-name"><b>${i.name}</b>${rarityBadge(i)}</div>`).join("")}</td><td>${result.type}</td><td>${result.effects.map(effect => `<span class="pill">${effect}</span>`).join(" ")}</td><td>${result.discoveries.length ? result.discoveries.map(discovery => `<span class="pill new">${discovery}</span>`).join(" ") : '<span class="small">None</span>'}</td><td>${result.value} gold<br><span class="small">Estimated value - not exact in-game price</span></td><td>${result.items.map(i => `${i.name}: ${i.source}<br><span class="small">${i.rarity_label}</span>`).join("<br>")}</td><td><button class="tinybtn" onclick="markRecipeCreated(${idx})">Created</button></td></tr>`).join("");
+  if (currentResults.length > visibleResultsCount) {
+    $("resultsFooter").style.display = "";
+    $("resultsFooter").textContent = `Showing ${visibleResultsCount} of ${currentResults.length} results.`;
+    $("showMoreResultsBtn").style.display = "";
+  } else {
+    $("resultsFooter").style.display = currentResults.length ? "" : "none";
+    $("resultsFooter").textContent = currentResults.length ? `Showing all ${currentResults.length} results.` : "";
+    $("showMoreResultsBtn").style.display = "none";
+  }
+}
+
 function renderResults(results) {
   currentResults = sortResults(results);
+  visibleResultsCount = Math.min(currentResults.length, RESULTS_PAGE_SIZE);
   $("stats").innerHTML = `<div class="stat"><b>${results.length}</b>Valid recipes</div><div class="stat"><b>${results.filter(r => r.discoveries.length).length}</b>Discovery recipes</div><div class="stat"><b>${results[0]?.value || 0}</b>Top value</div><div class="stat"><b>${results.filter(r => r.effects.length >= 2).length}</b>Multi-effect</div>`;
-  $("resultsBody").innerHTML = currentResults.map((result, idx) => `<tr class="${result.value >= 100 ? "high" : ""} ${result.discoveries.length ? "discover" : ""}"><td>${result.items.map(i => `<div class="ingredient-name"><b>${i.name}</b>${rarityBadge(i)}</div>`).join("")}</td><td>${result.type}</td><td>${result.effects.map(effect => `<span class="pill">${effect}</span>`).join(" ")}</td><td>${result.discoveries.length ? result.discoveries.map(discovery => `<span class="pill new">${discovery}</span>`).join(" ") : '<span class="small">None</span>'}</td><td>${result.value} gold<br><span class="small">Estimated value - not exact in-game price</span></td><td>${result.items.map(i => `${i.name}: ${i.source}<br><span class="small">${i.rarity_label}</span>`).join("<br>")}</td><td><button class="tinybtn" onclick="markRecipeCreated(${idx})">Created</button></td></tr>`).join("");
+  renderVisibleResults();
 }
 
 async function markRecipeCreated(idx) {
@@ -656,6 +724,7 @@ async function setInventoryQuantity(name, quantity) {
 
 async function init() {
   INGREDIENTS = (await api("/api/ingredients")).ingredients;
+  buildIngredientIndexes();
   populateSourceFilter();
   validate();
   refreshIngredientUI();
@@ -731,12 +800,7 @@ $("generateInventory").onclick = () => {
     }
   }
   if ($("includeTriples").checked) {
-    for (const combo of combos(names, 3)) {
-      const result = recipeFrom(combo);
-      if (result) {
-        results.push(result);
-      }
-    }
+    results.push(...generateTripleRecipes(names));
   }
   renderResults(results);
 };
@@ -764,6 +828,11 @@ $("characterInventoryList").addEventListener("click", event => {
   $("inventoryDelta").value = 1;
   renderCharacterInventory();
 });
+
+$("showMoreResultsBtn").onclick = () => {
+  visibleResultsCount = Math.min(currentResults.length, visibleResultsCount + RESULTS_PAGE_SIZE);
+  renderVisibleResults();
+};
 
 $("addCharacterBtn").onclick = async () => {
   const name = $("newCharacterName").value.trim();
