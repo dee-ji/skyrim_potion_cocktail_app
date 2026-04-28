@@ -27,7 +27,7 @@ button:hover{filter:brightness(1.15)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:700px){.row{grid-template-columns:1fr}}
 .small{font-size:.86rem;color:var(--muted)}
-.inventory{max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:#0d0b08;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px}
+.inventory{min-height:280px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:#0d0b08;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px;align-content:start}
 .checkline{display:flex;gap:8px;align-items:center;padding:5px;border-radius:8px}
 .checkline input{width:auto}
 .table-wrap{max-height:72vh;overflow:auto;border:1px solid var(--border);border-radius:14px;background:#0b0907}
@@ -67,12 +67,14 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
 .rarity-border-uncommon{border-left-color:#8089dd}
 .rarity-border-rare{border-left-color:#bf8ee1}
 .rarity-border-very-rare{border-left-color:#e4b861}
-.inventory-manager{max-height:390px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:#0d0b08}
+.inventory-manager{min-height:280px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:#0d0b08}
 .inventory-item{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px;border-bottom:1px solid rgba(214,173,86,.12);border-left:4px solid transparent}
 .inventory-meta{display:flex;flex-direction:column;gap:4px;min-width:0}
 .inventory-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 .inventory-count{font-weight:800;color:var(--gold2)}
 .mini{width:auto;padding:6px 10px;font-size:.82rem}
+.stretch-card{display:flex;flex-direction:column;max-height:700px}
+.stretch-card .fill-panel{flex:1;max-height:420px;overflow:auto}
 </style>
 </head>
 <body>
@@ -102,7 +104,7 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
         <div>
           <label>Sort results by</label>
           <select id="sortBy">
-            <option value="discovery">Discovery usefulness</option>
+            <option value="discovery">Discovery usefulness (rarity-aware)</option>
             <option value="value">Value</option>
             <option value="effects">Number of effects</option>
             <option value="alpha">Alphabetical</option>
@@ -140,7 +142,7 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
       <div id="characterStatus" class="status">Loading...</div>
     </section>
 
-    <section class="card span8">
+    <section class="card span12">
       <h2>Direct Recipe Check</h2>
       <div class="row">
         <div>
@@ -161,21 +163,25 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
       <div id="directOutput" class="small" style="margin-top:10px"></div>
     </section>
 
-    <section class="card span6">
+    <section class="card span6 stretch-card">
       <h2>Inventory Discovery Optimizer</h2>
       <div class="row">
         <button id="selectFiltered">Select filtered</button>
+        <button id="selectAllInventory">Select all</button>
+      </div>
+      <div class="row" style="margin-top:10px">
         <button id="clearInventory">Clear inventory</button>
+        <div></div>
       </div>
       <div style="margin:10px 0" class="row">
         <label class="checkline"><input id="includePairs" type="checkbox" checked> 2-ingredient recipes</label>
         <label class="checkline"><input id="includeTriples" type="checkbox" checked> 3-ingredient recipes</label>
       </div>
-      <div id="inventoryList" class="inventory"></div>
+      <div id="inventoryList" class="inventory fill-panel"></div>
       <button id="generateInventory" style="margin-top:10px">Generate inventory discovery recipes</button>
     </section>
 
-    <section class="card span6">
+    <section class="card span6 stretch-card">
       <h2>Character Inventory</h2>
       <p class="small">Track how many of each ingredient the selected character currently owns. Crafted recipes consume one of each listed ingredient.</p>
       <label>Ingredient</label>
@@ -199,7 +205,7 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
         <button id="refreshInventoryBtn">Refresh inventory</button>
       </div>
       <div id="inventoryStatus" class="status">Select a character to manage inventory.</div>
-      <div id="characterInventoryList" class="inventory-manager" style="margin-top:10px"></div>
+      <div id="characterInventoryList" class="inventory-manager fill-panel" style="margin-top:10px"></div>
     </section>
 
     <section class="card span6">
@@ -251,14 +257,6 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
     </section>
 
     <section class="card span12">
-      <h2>Database Inspector</h2>
-      <p class="small">Runs read-only SELECT queries against the host SQLite database.</p>
-      <textarea id="sqlBox" rows="4">SELECT * FROM characters;</textarea>
-      <button id="runSqlBtn" style="margin-top:10px">Run SELECT</button>
-      <div id="dbOutput" class="dbout"></div>
-    </section>
-
-    <section class="card span12">
       <details>
         <summary>Data Validation Report</summary>
         <div id="validationReport"></div>
@@ -271,6 +269,7 @@ const $ = id => document.getElementById(id);
 let INGREDIENTS = [];
 let known = {};
 let inventory = {};
+let selectedInventoryNames = new Set();
 let activeCharacterId = null;
 let currentResults = [];
 const POSITIVE = new Set(["Cure Disease","Fortify Alteration","Fortify Barter","Fortify Block","Fortify Carry Weight","Fortify Conjuration","Fortify Destruction","Fortify Enchanting","Fortify Health","Fortify Heavy Armor","Fortify Illusion","Fortify Light Armor","Fortify Lockpicking","Fortify Magicka","Fortify Marksman","Fortify One-handed","Fortify Pickpocket","Fortify Restoration","Fortify Smithing","Fortify Sneak","Fortify Stamina","Fortify Two-handed","Invisibility","Paralysis","Regenerate Health","Regenerate Magicka","Regenerate Stamina","Resist Fire","Resist Frost","Resist Magic","Resist Poison","Resist Shock","Restore Health","Restore Magicka","Restore Stamina","Waterbreathing"]);
@@ -309,10 +308,34 @@ function fillSelectFromItems(select, items, includeBlank = false) {
   }
 }
 
+function syncDirectRecipeOptions(changedId = "") {
+  const values = {
+    ing1: $("ing1").value,
+    ing2: $("ing2").value,
+    ing3: $("ing3").value,
+  };
+  const selects = ["ing1", "ing2", "ing3"];
+  for (const id of selects) {
+    const select = $(id);
+    const currentValue = values[id];
+    const availableItems = filteredIngredients().filter(ingredient => {
+      if (ingredient.name === currentValue) {
+        return true;
+      }
+      return !selects.some(otherId => otherId !== id && values[otherId] === ingredient.name);
+    });
+    fillSelectFromItems(select, availableItems, id === "ing3");
+  }
+  if (changedId) {
+    const changed = $(changedId);
+    if (!changed.value && values[changedId]) {
+      changed.value = values[changedId];
+    }
+  }
+}
+
 function refreshIngredientUI() {
-  fillSelect($("ing1"));
-  fillSelect($("ing2"));
-  fillSelect($("ing3"), true);
+  syncDirectRecipeOptions();
   fillSelectFromItems($("manualIngredient"), INGREDIENTS);
   fillSelectFromItems($("inventoryIngredient"), INGREDIENTS);
   renderInventory();
@@ -346,6 +369,9 @@ function recipeFrom(names) {
   if (items.length < 2) {
     return null;
   }
+  if (new Set(names).size !== names.length) {
+    return null;
+  }
   const counts = {};
   for (const item of items) {
     for (const effect of item.effects) {
@@ -360,17 +386,27 @@ function recipeFrom(names) {
   const neg = effects.filter(effect => NEGATIVE.has(effect)).length;
   const type = pos > neg ? "Potion" : neg > pos ? "Poison" : "Mixed";
   const discoveries = [];
+  const discoveryCounts = {};
   for (const item of items) {
     for (const effect of effects) {
       if (item.effects.includes(effect) && !known[item.name]?.has(effect)) {
         discoveries.push(`${item.name}: ${effect}`);
+        discoveryCounts[item.name] = (discoveryCounts[item.name] || 0) + 1;
       }
     }
   }
+  const discoveryPriority = items.reduce((score, item) => {
+    const discoveriesForItem = discoveryCounts[item.name] || 0;
+    if (!discoveriesForItem) {
+      return score;
+    }
+    const rarityWeight = item.rarity_rank + 1;
+    return score + discoveriesForItem * discoveriesForItem * rarityWeight;
+  }, 0);
   const skill = Number($("alchemySkill").value || 15);
   const mult = 1 + (skill - 15) / 120;
   const value = Math.round(effects.reduce((sum, effect) => sum + (BASE_VALUE[effect] || 18), 0) * mult * (items.length === 3 ? 1.15 : 1));
-  return {items, effects, type, discoveries, value};
+  return {items, effects, type, discoveries, discoveryPriority, value};
 }
 
 function combos(arr, k) {
@@ -397,7 +433,7 @@ function sortResults(results) {
     : by === "effects"
       ? b.effects.length - a.effects.length
       : by === "discovery"
-        ? b.discoveries.length - a.discoveries.length || b.value - a.value
+        ? b.discoveryPriority - a.discoveryPriority || b.discoveries.length - a.discoveries.length || b.value - a.value
         : a.items.map(i => i.name).join(",").localeCompare(b.items.map(i => i.name).join(",")));
 }
 
@@ -433,10 +469,10 @@ async function markRecipeCreated(idx) {
 
 function renderInventory() {
   const ownedNames = new Set(Object.entries(inventory).filter(([, quantity]) => quantity > 0).map(([name]) => name));
-  const selected = new Set([...document.querySelectorAll(".inv:checked")].map(node => node.value));
+  selectedInventoryNames = new Set([...selectedInventoryNames].filter(name => ownedNames.has(name)));
   const items = filteredIngredients().filter(ingredient => ownedNames.has(ingredient.name));
   $("inventoryList").innerHTML = items.length
-    ? items.map(ingredient => `<label class="checkline ${rarityBorderClass(ingredient)}"><input class="inv" type="checkbox" value="${ingredient.name}" ${selected.has(ingredient.name) ? "checked" : ""}> ${ingredient.name} ${rarityBadge(ingredient)} <span class="small">${ingredient.source} · Qty ${inventory[ingredient.name]}</span></label>`).join("")
+    ? items.map(ingredient => `<label class="checkline ${rarityBorderClass(ingredient)}"><input class="inv" type="checkbox" value="${ingredient.name}" ${selectedInventoryNames.has(ingredient.name) ? "checked" : ""}> ${ingredient.name} ${rarityBadge(ingredient)} <span class="small">${ingredient.source} · Qty ${inventory[ingredient.name]}</span></label>`).join("")
     : '<div class="small">No tracked ingredients match the current filter. Add some quantities in the Character Inventory card.</div>';
 }
 
@@ -444,7 +480,7 @@ function renderCharacterInventory() {
   const items = Object.entries(inventory)
     .filter(([, quantity]) => quantity > 0)
     .map(([name, quantity]) => ({...INGREDIENTS.find(ingredient => ingredient.name === name), quantity}))
-    .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name));
   $("inventoryStatus").textContent = activeCharacterId
     ? `Tracked ingredients: ${items.length}. Total items: ${items.reduce((sum, item) => sum + item.quantity, 0)}.`
     : "Select a character to manage inventory.";
@@ -592,6 +628,9 @@ $("searchBox").addEventListener("input", refreshIngredientUI);
 $("dlcFilter").addEventListener("change", refreshIngredientUI);
 $("sortBy").addEventListener("change", () => renderResults(currentResults));
 $("manualIngredient").addEventListener("change", renderManualKnownEffects);
+$("ing1").addEventListener("change", () => syncDirectRecipeOptions("ing1"));
+$("ing2").addEventListener("change", () => syncDirectRecipeOptions("ing2"));
+$("ing3").addEventListener("change", () => syncDirectRecipeOptions("ing3"));
 $("inventoryIngredient").addEventListener("change", () => {
   $("inventorySetQty").value = inventory[$("inventoryIngredient").value] ?? 0;
 });
@@ -623,19 +662,26 @@ $("showCombosBtn").onclick = () => {
 };
 
 $("selectFiltered").onclick = () => {
-  document.querySelectorAll(".inv").forEach(node => {
-    node.checked = true;
+  filteredIngredients().forEach(ingredient => {
+    if ((inventory[ingredient.name] ?? 0) > 0) {
+      selectedInventoryNames.add(ingredient.name);
+    }
   });
+  renderInventory();
+};
+
+$("selectAllInventory").onclick = () => {
+  selectedInventoryNames = new Set(Object.entries(inventory).filter(([, quantity]) => quantity > 0).map(([name]) => name));
+  renderInventory();
 };
 
 $("clearInventory").onclick = () => {
-  document.querySelectorAll(".inv").forEach(node => {
-    node.checked = false;
-  });
+  selectedInventoryNames.clear();
+  renderInventory();
 };
 
 $("generateInventory").onclick = () => {
-  const names = [...document.querySelectorAll(".inv:checked")].map(node => node.value);
+  const names = [...selectedInventoryNames];
   const results = [];
   if ($("includePairs").checked) {
     for (const combo of combos(names, 2)) {
@@ -655,6 +701,18 @@ $("generateInventory").onclick = () => {
   }
   renderResults(results);
 };
+
+$("inventoryList").addEventListener("change", event => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) || !target.classList.contains("inv")) {
+    return;
+  }
+  if (target.checked) {
+    selectedInventoryNames.add(target.value);
+  } else {
+    selectedInventoryNames.delete(target.value);
+  }
+});
 
 $("addCharacterBtn").onclick = async () => {
   const name = $("newCharacterName").value.trim();
@@ -782,15 +840,6 @@ $("removeSelectedKnown").onclick = async () => {
     await updateManualKnown("DELETE");
   } catch (error) {
     alert(error.message);
-  }
-};
-
-$("runSqlBtn").onclick = async () => {
-  try {
-    const data = await api("/api/debug/query?sql=" + encodeURIComponent($("sqlBox").value));
-    $("dbOutput").innerHTML = "<table><thead><tr>" + data.columns.map(column => `<th>${column}</th>`).join("") + "</tr></thead><tbody>" + data.rows.map(row => "<tr>" + data.columns.map(column => `<td>${row[column] ?? ""}</td>`).join("") + "</tr>").join("") + "</tbody></table>";
-  } catch (error) {
-    $("dbOutput").innerHTML = "<pre>" + error.message + "</pre>";
   }
 };
 
