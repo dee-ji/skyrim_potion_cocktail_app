@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Skyrim Alchemy Tool - SQLite</title>
+<title>Skyrim Potion Cocktails</title>
 <style>
 :root{--bg:#11100d;--panel:#1c1812;--panel2:#272017;--text:#f3ead7;--muted:#b9aa8d;--gold:#d6ad56;--gold2:#f0d28a;--red:#ba5b4f;--green:#77a36b;--border:#4b3c27;--shadow:0 14px 40px rgba(0,0,0,.35)}
 *{box-sizing:border-box}
@@ -55,6 +55,24 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
 @media(max-width:700px){.effect-grid{grid-template-columns:1fr}}
 .effect-chip{display:flex;gap:8px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:#120f0b}
 .effect-chip input{width:auto;flex:none}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ingredient-row{padding:8px;border-bottom:1px solid rgba(214,173,86,.15);border-left:4px solid transparent}
+.ingredient-name{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rarity-badge{font-weight:700}
+.rarity-common{background:#1b3345!important;border-color:#4a7ca3!important;color:#e0f1ff!important}
+.rarity-uncommon{background:#2c2d57!important;border-color:#8089dd!important;color:#ececff!important}
+.rarity-rare{background:#4b3457!important;border-color:#bf8ee1!important;color:#faecff!important}
+.rarity-very-rare{background:#5a4218!important;border-color:#e4b861!important;color:#fff1ce!important}
+.rarity-border-common{border-left-color:#4a7ca3}
+.rarity-border-uncommon{border-left-color:#8089dd}
+.rarity-border-rare{border-left-color:#bf8ee1}
+.rarity-border-very-rare{border-left-color:#e4b861}
+.inventory-manager{max-height:390px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:#0d0b08}
+.inventory-item{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px;border-bottom:1px solid rgba(214,173,86,.12);border-left:4px solid transparent}
+.inventory-meta{display:flex;flex-direction:column;gap:4px;min-width:0}
+.inventory-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.inventory-count{font-weight:800;color:var(--gold2)}
+.mini{width:auto;padding:6px 10px;font-size:.82rem}
 </style>
 </head>
 <body>
@@ -92,6 +110,12 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
         </div>
       </div>
       <p class="small">Estimated value - not exact in-game price.</p>
+      <div class="legend">
+        <span class="pill rarity-badge rarity-common">Common</span>
+        <span class="pill rarity-badge rarity-uncommon">Uncommon</span>
+        <span class="pill rarity-badge rarity-rare">Rare</span>
+        <span class="pill rarity-badge rarity-very-rare">Very Rare</span>
+      </div>
     </section>
 
     <section class="card span8">
@@ -149,6 +173,33 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
       </div>
       <div id="inventoryList" class="inventory"></div>
       <button id="generateInventory" style="margin-top:10px">Generate inventory discovery recipes</button>
+    </section>
+
+    <section class="card span6">
+      <h2>Character Inventory</h2>
+      <p class="small">Track how many of each ingredient the selected character currently owns. Crafted recipes consume one of each listed ingredient.</p>
+      <label>Ingredient</label>
+      <select id="inventoryIngredient"></select>
+      <div class="row">
+        <div>
+          <label>Quantity change</label>
+          <input id="inventoryDelta" type="number" min="1" value="1">
+        </div>
+        <div>
+          <label>Set exact quantity</label>
+          <input id="inventorySetQty" type="number" min="0" value="0">
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="addInventoryQty">Add quantity</button>
+        <button id="removeInventoryQty">Remove quantity</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="setInventoryQty">Set exact quantity</button>
+        <button id="refreshInventoryBtn">Refresh inventory</button>
+      </div>
+      <div id="inventoryStatus" class="status">Select a character to manage inventory.</div>
+      <div id="characterInventoryList" class="inventory-manager" style="margin-top:10px"></div>
     </section>
 
     <section class="card span6">
@@ -219,6 +270,7 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
 const $ = id => document.getElementById(id);
 let INGREDIENTS = [];
 let known = {};
+let inventory = {};
 let activeCharacterId = null;
 let currentResults = [];
 const POSITIVE = new Set(["Cure Disease","Fortify Alteration","Fortify Barter","Fortify Block","Fortify Carry Weight","Fortify Conjuration","Fortify Destruction","Fortify Enchanting","Fortify Health","Fortify Heavy Armor","Fortify Illusion","Fortify Light Armor","Fortify Lockpicking","Fortify Magicka","Fortify Marksman","Fortify One-handed","Fortify Pickpocket","Fortify Restoration","Fortify Smithing","Fortify Sneak","Fortify Stamina","Fortify Two-handed","Invisibility","Paralysis","Regenerate Health","Regenerate Magicka","Regenerate Stamina","Resist Fire","Resist Frost","Resist Magic","Resist Poison","Resist Shock","Restore Health","Restore Magicka","Restore Stamina","Waterbreathing"]);
@@ -240,12 +292,16 @@ function filteredIngredients() {
 }
 
 function fillSelect(select, includeBlank = false) {
+  fillSelectFromItems(select, filteredIngredients(), includeBlank);
+}
+
+function fillSelectFromItems(select, items, includeBlank = false) {
   const old = select.value;
   select.innerHTML = "";
   if (includeBlank) {
     select.add(new Option("— none —", ""));
   }
-  for (const ingredient of filteredIngredients()) {
+  for (const ingredient of items) {
     select.add(new Option(ingredient.name, ingredient.name));
   }
   if ([...select.options].some(option => option.value === old)) {
@@ -257,14 +313,28 @@ function refreshIngredientUI() {
   fillSelect($("ing1"));
   fillSelect($("ing2"));
   fillSelect($("ing3"), true);
-  fillSelect($("manualIngredient"));
+  fillSelectFromItems($("manualIngredient"), INGREDIENTS);
+  fillSelectFromItems($("inventoryIngredient"), INGREDIENTS);
   renderInventory();
+  renderCharacterInventory();
   renderKnownList();
   renderManualKnownEffects();
 }
 
 function effectClass(ingredient, effect) {
   return known[ingredient.name]?.has(effect) ? "known" : "unknown";
+}
+
+function rarityClass(ingredient) {
+  return `rarity-${ingredient.rarity.replaceAll("_", "-")}`;
+}
+
+function rarityBorderClass(ingredient) {
+  return `rarity-border-${ingredient.rarity.replaceAll("_", "-")}`;
+}
+
+function rarityBadge(ingredient) {
+  return `<span class="pill rarity-badge ${rarityClass(ingredient)}" title="${ingredient.rarity_note}">${ingredient.rarity_label}</span>`;
 }
 
 function selectedManualEffects() {
@@ -340,7 +410,7 @@ function rerenderCurrentResults() {
 function renderResults(results) {
   currentResults = sortResults(results);
   $("stats").innerHTML = `<div class="stat"><b>${results.length}</b>Valid recipes</div><div class="stat"><b>${results.filter(r => r.discoveries.length).length}</b>Discovery recipes</div><div class="stat"><b>${results[0]?.value || 0}</b>Top value</div><div class="stat"><b>${results.filter(r => r.effects.length >= 2).length}</b>Multi-effect</div>`;
-  $("resultsBody").innerHTML = currentResults.map((result, idx) => `<tr class="${result.value >= 100 ? "high" : ""} ${result.discoveries.length ? "discover" : ""}"><td>${result.items.map(i => `<b>${i.name}</b>`).join("<br>")}</td><td>${result.type}</td><td>${result.effects.map(effect => `<span class="pill">${effect}</span>`).join(" ")}</td><td>${result.discoveries.length ? result.discoveries.map(discovery => `<span class="pill new">${discovery}</span>`).join(" ") : '<span class="small">None</span>'}</td><td>${result.value} gold<br><span class="small">Estimated value - not exact in-game price</span></td><td>${result.items.map(i => `${i.name}: ${i.source}`).join("<br>")}</td><td><button class="tinybtn" onclick="markRecipeCreated(${idx})">Created</button></td></tr>`).join("");
+  $("resultsBody").innerHTML = currentResults.map((result, idx) => `<tr class="${result.value >= 100 ? "high" : ""} ${result.discoveries.length ? "discover" : ""}"><td>${result.items.map(i => `<div class="ingredient-name"><b>${i.name}</b>${rarityBadge(i)}</div>`).join("")}</td><td>${result.type}</td><td>${result.effects.map(effect => `<span class="pill">${effect}</span>`).join(" ")}</td><td>${result.discoveries.length ? result.discoveries.map(discovery => `<span class="pill new">${discovery}</span>`).join(" ") : '<span class="small">None</span>'}</td><td>${result.value} gold<br><span class="small">Estimated value - not exact in-game price</span></td><td>${result.items.map(i => `${i.name}: ${i.source}<br><span class="small">${i.rarity_label}</span>`).join("<br>")}</td><td><button class="tinybtn" onclick="markRecipeCreated(${idx})">Created</button></td></tr>`).join("");
 }
 
 async function markRecipeCreated(idx) {
@@ -354,18 +424,38 @@ async function markRecipeCreated(idx) {
     body: JSON.stringify({ingredient_names: result.items.map(i => i.name), effect_names: result.effects}),
   });
   await loadKnown();
+  await loadInventory();
+  renderCharacterInventory();
   renderKnownList();
   renderManualKnownEffects();
   rerenderCurrentResults();
 }
 
 function renderInventory() {
+  const ownedNames = new Set(Object.entries(inventory).filter(([, quantity]) => quantity > 0).map(([name]) => name));
   const selected = new Set([...document.querySelectorAll(".inv:checked")].map(node => node.value));
-  $("inventoryList").innerHTML = filteredIngredients().map(ingredient => `<label class="checkline"><input class="inv" type="checkbox" value="${ingredient.name}" ${selected.has(ingredient.name) ? "checked" : ""}> ${ingredient.name} <span class="small">${ingredient.source}</span></label>`).join("");
+  const items = filteredIngredients().filter(ingredient => ownedNames.has(ingredient.name));
+  $("inventoryList").innerHTML = items.length
+    ? items.map(ingredient => `<label class="checkline ${rarityBorderClass(ingredient)}"><input class="inv" type="checkbox" value="${ingredient.name}" ${selected.has(ingredient.name) ? "checked" : ""}> ${ingredient.name} ${rarityBadge(ingredient)} <span class="small">${ingredient.source} · Qty ${inventory[ingredient.name]}</span></label>`).join("")
+    : '<div class="small">No tracked ingredients match the current filter. Add some quantities in the Character Inventory card.</div>';
+}
+
+function renderCharacterInventory() {
+  const items = Object.entries(inventory)
+    .filter(([, quantity]) => quantity > 0)
+    .map(([name, quantity]) => ({...INGREDIENTS.find(ingredient => ingredient.name === name), quantity}))
+    .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name));
+  $("inventoryStatus").textContent = activeCharacterId
+    ? `Tracked ingredients: ${items.length}. Total items: ${items.reduce((sum, item) => sum + item.quantity, 0)}.`
+    : "Select a character to manage inventory.";
+  $("characterInventoryList").innerHTML = items.length
+    ? items.map(item => `<div class="inventory-item ${rarityBorderClass(item)}"><div class="inventory-meta"><div class="ingredient-name"><b>${item.name}</b>${rarityBadge(item)}</div><span class="small">${item.source}</span></div><div class="inventory-actions"><span class="inventory-count">x${item.quantity}</span><button class="mini" onclick="adjustInventory('${item.name.replaceAll("'", "\\'")}',1)">+1</button><button class="mini" onclick="adjustInventory('${item.name.replaceAll("'", "\\'")}',-1)">-1</button></div></div>`).join("")
+    : '<div class="small">No ingredients tracked yet for this character.</div>';
+  $("inventorySetQty").value = inventory[$("inventoryIngredient").value] ?? 0;
 }
 
 function renderKnownList() {
-  $("knownList").innerHTML = INGREDIENTS.map(ingredient => `<div style="padding:8px;border-bottom:1px solid rgba(214,173,86,.15)"><b>${ingredient.name}</b> <span class="small">${ingredient.source}</span><br>${ingredient.effects.map(effect => `<span class="pill ${effectClass(ingredient, effect)}">${effect}</span>`).join(" ")}</div>`).join("");
+  $("knownList").innerHTML = INGREDIENTS.map(ingredient => `<div class="ingredient-row ${rarityBorderClass(ingredient)}"><div class="ingredient-name"><b>${ingredient.name}</b>${rarityBadge(ingredient)}<span class="small">${ingredient.source}</span></div>${ingredient.effects.map(effect => `<span class="pill ${effectClass(ingredient, effect)}">${effect}</span>`).join(" ")}</div>`).join("");
 }
 
 function renderManualKnownEffects() {
@@ -398,6 +488,17 @@ async function loadKnown() {
   }
 }
 
+async function loadInventory() {
+  inventory = {};
+  if (!activeCharacterId) {
+    return;
+  }
+  const data = await api(`/api/characters/${activeCharacterId}/inventory`);
+  for (const item of data.inventory) {
+    inventory[item.name] = item.quantity;
+  }
+}
+
 async function loadCharacters() {
   const data = await api("/api/characters?q=" + encodeURIComponent($("characterSearch").value));
   const old = $("characterSelect").value;
@@ -408,6 +509,9 @@ async function loadCharacters() {
   activeCharacterId = $("characterSelect").value || null;
   $("characterStatus").textContent = activeCharacterId ? `Active character ID ${activeCharacterId}` : "No character selected.";
   await loadKnown();
+  await loadInventory();
+  renderCharacterInventory();
+  renderInventory();
   renderKnownList();
   renderManualKnownEffects();
 }
@@ -443,6 +547,40 @@ async function updateManualKnown(method) {
   rerenderCurrentResults();
 }
 
+async function adjustInventory(name, delta) {
+  if (!activeCharacterId) {
+    alert("Select a character first.");
+    return;
+  }
+  try {
+    await api(`/api/characters/${activeCharacterId}/inventory/adjust`, {
+      method: "POST",
+      body: JSON.stringify({ingredient_name: name, delta}),
+    });
+    await loadInventory();
+    renderCharacterInventory();
+    renderInventory();
+    rerenderCurrentResults();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function setInventoryQuantity(name, quantity) {
+  if (!activeCharacterId) {
+    alert("Select a character first.");
+    return;
+  }
+  await api(`/api/characters/${activeCharacterId}/inventory`, {
+    method: "PUT",
+    body: JSON.stringify({ingredient_name: name, quantity}),
+  });
+  await loadInventory();
+  renderCharacterInventory();
+  renderInventory();
+  rerenderCurrentResults();
+}
+
 async function init() {
   INGREDIENTS = (await api("/api/ingredients")).ingredients;
   validate();
@@ -454,6 +592,9 @@ $("searchBox").addEventListener("input", refreshIngredientUI);
 $("dlcFilter").addEventListener("change", refreshIngredientUI);
 $("sortBy").addEventListener("change", () => renderResults(currentResults));
 $("manualIngredient").addEventListener("change", renderManualKnownEffects);
+$("inventoryIngredient").addEventListener("change", () => {
+  $("inventorySetQty").value = inventory[$("inventoryIngredient").value] ?? 0;
+});
 
 $("checkBtn").onclick = () => {
   const names = [$("ing1").value, $("ing2").value, $("ing3").value].filter(Boolean);
@@ -541,6 +682,9 @@ $("characterSelect").addEventListener("change", async () => {
   activeCharacterId = $("characterSelect").value || null;
   $("characterStatus").textContent = activeCharacterId ? `Active character ID ${activeCharacterId}` : "No character selected.";
   await loadKnown();
+  await loadInventory();
+  renderCharacterInventory();
+  renderInventory();
   renderKnownList();
   renderManualKnownEffects();
   rerenderCurrentResults();
@@ -554,10 +698,13 @@ $("markFirstKnown").onclick = async () => {
   for (const ingredient of INGREDIENTS) {
     await api(`/api/characters/${activeCharacterId}/created-recipes`, {
       method: "POST",
-      body: JSON.stringify({ingredient_names: [ingredient.name, ingredient.name], effect_names: [ingredient.effects[0]]}),
+      body: JSON.stringify({ingredient_names: [ingredient.name, ingredient.name], effect_names: [ingredient.effects[0]], consume_inventory: false}),
     }).catch(() => {});
   }
   await loadKnown();
+  await loadInventory();
+  renderCharacterInventory();
+  renderInventory();
   renderKnownList();
   renderManualKnownEffects();
   rerenderCurrentResults();
@@ -567,6 +714,46 @@ $("clearClientKnown").onclick = async () => {
   await loadKnown();
   renderKnownList();
   renderManualKnownEffects();
+  rerenderCurrentResults();
+};
+
+$("addInventoryQty").onclick = async () => {
+  const delta = Number($("inventoryDelta").value || 0);
+  if (delta <= 0) {
+    alert("Quantity change must be at least 1.");
+    return;
+  }
+  await adjustInventory($("inventoryIngredient").value, delta);
+  $("inventorySetQty").value = inventory[$("inventoryIngredient").value] ?? 0;
+};
+
+$("removeInventoryQty").onclick = async () => {
+  const delta = Number($("inventoryDelta").value || 0);
+  if (delta <= 0) {
+    alert("Quantity change must be at least 1.");
+    return;
+  }
+  await adjustInventory($("inventoryIngredient").value, -delta);
+  $("inventorySetQty").value = inventory[$("inventoryIngredient").value] ?? 0;
+};
+
+$("setInventoryQty").onclick = async () => {
+  const quantity = Number($("inventorySetQty").value || 0);
+  if (quantity < 0) {
+    alert("Quantity cannot be negative.");
+    return;
+  }
+  try {
+    await setInventoryQuantity($("inventoryIngredient").value, quantity);
+  } catch (error) {
+    alert(error.message);
+  }
+};
+
+$("refreshInventoryBtn").onclick = async () => {
+  await loadInventory();
+  renderCharacterInventory();
+  renderInventory();
   rerenderCurrentResults();
 };
 
