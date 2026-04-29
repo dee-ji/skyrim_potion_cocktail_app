@@ -29,7 +29,9 @@ from app.schemas import (
 )
 from app.services import (
     ensure_character_exists,
+    get_ingredient_id_or_404,
     get_ingredient_or_404,
+    sql_placeholders,
     upsert_inventory_quantity,
     validate_ingredient_effects,
 )
@@ -38,13 +40,13 @@ router = APIRouter(tags=["characters"])
 
 
 @router.get("/api/characters", response_model=CharactersResponse)
-def list_characters(q: str = "") -> CharactersResponse:
+def list_characters(search: str = "") -> CharactersResponse:
     with db() as conn:
-        if q:
+        if search:
             data = rows(
                 conn.execute(
                     "SELECT * FROM characters WHERE name LIKE ? ORDER BY name",
-                    (f"%{q}%",),
+                    (f"%{search}%",),
                 )
             )
         else:
@@ -175,15 +177,15 @@ def add_known_effects(
 ) -> KnownEffectsMutationResponse:
     with db() as conn:
         ensure_character_exists(conn, character_id)
-        ingredient = get_ingredient_or_404(conn, payload.ingredient_name, fields="id")
+        ingredient_id = get_ingredient_id_or_404(conn, payload.ingredient_name)
         effect_rows = validate_ingredient_effects(
-            conn, ingredient["id"], payload.effect_names
+            conn, ingredient_id, payload.effect_names
         )
         before_changes = conn.total_changes
         for effect in effect_rows:
             conn.execute(
                 "INSERT OR IGNORE INTO character_known_effects(character_id, ingredient_id, effect_id) VALUES (?, ?, ?)",
-                (character_id, ingredient["id"], effect["id"]),
+                (character_id, ingredient_id, effect["id"]),
             )
         marked = conn.total_changes - before_changes
     return KnownEffectsMutationResponse(marked=marked)
@@ -198,17 +200,18 @@ def remove_known_effects(
 ) -> KnownEffectsMutationResponse:
     with db() as conn:
         ensure_character_exists(conn, character_id)
-        ingredient = get_ingredient_or_404(conn, payload.ingredient_name, fields="id")
+        ingredient_id = get_ingredient_id_or_404(conn, payload.ingredient_name)
         effect_rows = validate_ingredient_effects(
-            conn, ingredient["id"], payload.effect_names
+            conn, ingredient_id, payload.effect_names
         )
+        effect_placeholders = sql_placeholders(len(effect_rows))
         before_changes = conn.total_changes
         conn.execute(
             f"""
             DELETE FROM character_known_effects
-            WHERE character_id = ? AND ingredient_id = ? AND effect_id IN ({",".join("?" for _ in effect_rows)})
+            WHERE character_id = ? AND ingredient_id = ? AND effect_id IN ({effect_placeholders})
             """,
-            (character_id, ingredient["id"], *(effect["id"] for effect in effect_rows)),
+            (character_id, ingredient_id, *(effect["id"] for effect in effect_rows)),
         )
         removed = conn.total_changes - before_changes
     return KnownEffectsMutationResponse(removed=removed)
@@ -221,17 +224,19 @@ def remove_known_effects(
 def mark_created(character_id: int, payload: CreatedRecipe) -> CreatedRecipeResponse:
     if len(payload.ingredient_names) not in (2, 3):
         raise HTTPException(400, "Recipe must have 2 or 3 ingredients")
+    ingredient_placeholders = sql_placeholders(len(payload.ingredient_names))
+    effect_placeholders = sql_placeholders(len(payload.effect_names))
     with db() as conn:
         ensure_character_exists(conn, character_id)
         ingredient_ids = rows(
             conn.execute(
-                f"SELECT id, name FROM ingredients WHERE name IN ({','.join('?' for _ in payload.ingredient_names)})",
+                f"SELECT id, name FROM ingredients WHERE name IN ({ingredient_placeholders})",
                 payload.ingredient_names,
             )
         )
         effect_ids = rows(
             conn.execute(
-                f"SELECT id, name FROM effects WHERE name IN ({','.join('?' for _ in payload.effect_names)})",
+                f"SELECT id, name FROM effects WHERE name IN ({effect_placeholders})",
                 payload.effect_names,
             )
         )
@@ -240,6 +245,7 @@ def mark_created(character_id: int, payload: CreatedRecipe) -> CreatedRecipeResp
         ingredient_counts = Counter(payload.ingredient_names)
         if len(ingredient_by_name) != len(ingredient_counts):
             raise HTTPException(400, "One or more ingredients were not found")
+        inventory_placeholders = sql_placeholders(len(ingredient_counts))
         if payload.consume_inventory:
             inventory_rows = rows(
                 conn.execute(
@@ -247,7 +253,7 @@ def mark_created(character_id: int, payload: CreatedRecipe) -> CreatedRecipeResp
                     SELECT i.name, ci.quantity
                     FROM character_inventory ci
                     JOIN ingredients i ON i.id = ci.ingredient_id
-                    WHERE ci.character_id = ? AND i.name IN ({",".join("?" for _ in ingredient_counts)})
+                    WHERE ci.character_id = ? AND i.name IN ({inventory_placeholders})
                     """,
                     (character_id, *ingredient_counts.keys()),
                 )
@@ -310,7 +316,7 @@ def mark_created(character_id: int, payload: CreatedRecipe) -> CreatedRecipeResp
                 SELECT i.name, ci.quantity
                 FROM character_inventory ci
                 JOIN ingredients i ON i.id = ci.ingredient_id
-                WHERE ci.character_id = ? AND i.name IN ({",".join("?" for _ in ingredient_counts)})
+                WHERE ci.character_id = ? AND i.name IN ({inventory_placeholders})
                 """,
                 (character_id, *ingredient_counts.keys()),
             )

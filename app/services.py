@@ -7,6 +7,12 @@ from fastapi import HTTPException
 from app.rarity import rarity_for_ingredient
 
 
+def sql_placeholders(count: int) -> str:
+    if count <= 0:
+        raise ValueError("count must be positive")
+    return ",".join("?" for _ in range(count))
+
+
 def ensure_character_exists(conn: sqlite3.Connection, character_id: int) -> None:
     if not conn.execute(
         "SELECT 1 FROM characters WHERE id=?", (character_id,)
@@ -15,20 +21,29 @@ def ensure_character_exists(conn: sqlite3.Connection, character_id: int) -> None
 
 
 def get_ingredient_or_404(
-    conn: sqlite3.Connection, ingredient_name: str, *, fields: str = "id, source"
+    conn: sqlite3.Connection, ingredient_name: str
 ) -> sqlite3.Row:
     ingredient = conn.execute(
-        f"SELECT {fields} FROM ingredients WHERE name=?", (ingredient_name,)
+        "SELECT id, source FROM ingredients WHERE name=?", (ingredient_name,)
     ).fetchone()
     if not ingredient:
         raise HTTPException(404, "Ingredient not found")
     return ingredient
 
 
+def get_ingredient_id_or_404(conn: sqlite3.Connection, ingredient_name: str) -> int:
+    ingredient = conn.execute(
+        "SELECT id FROM ingredients WHERE name=?", (ingredient_name,)
+    ).fetchone()
+    if not ingredient:
+        raise HTTPException(404, "Ingredient not found")
+    return ingredient["id"]
+
+
 def get_ingredient_effect_rows(
     conn: sqlite3.Connection, ingredient_id: int, effect_names: list[str]
 ) -> list[dict[str, int | str]]:
-    placeholders = ",".join("?" for _ in effect_names)
+    placeholders = sql_placeholders(len(effect_names))
     return [
         dict(row)
         for row in conn.execute(

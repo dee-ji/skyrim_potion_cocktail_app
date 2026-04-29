@@ -694,7 +694,7 @@ async function loadInventory() {
 }
 
 async function loadCharacters() {
-  const data = await api("/api/characters?q=" + encodeURIComponent($("characterSearch").value));
+  const data = await api("/api/characters?search=" + encodeURIComponent($("characterSearch").value));
   const old = $("characterSelect").value;
   $("characterSelect").innerHTML = '<option value="">— select character —</option>' + data.characters.map(character => `<option value="${character.id}">${character.name}</option>`).join("");
   if ([...$("characterSelect").options].some(option => option.value === old)) {
