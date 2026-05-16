@@ -88,6 +88,22 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
 .stretch-card{display:flex;flex-direction:column;max-height:700px}
 .stretch-card .fill-panel{flex:1;max-height:420px;overflow:auto}
 .selected-item{outline:1px solid var(--gold2);background:rgba(214,173,86,.08)}
+@media(max-width:700px){
+main{padding:12px 10px 44px}
+.card{padding:12px;border-radius:14px}
+h2{font-size:1.05rem;margin-bottom:8px}
+select,input,textarea,button{padding:8px;border-radius:8px}
+.inventory-card{height:calc(100vh - 24px);height:calc(100svh - 24px);max-height:700px}
+.inventory-card .inventory-form>.small{display:none}
+.inventory-card label{margin:.35rem 0 .18rem;font-size:.82rem}
+.inventory-card .row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.inventory-card .status{margin-top:6px;font-size:.82rem}
+.inventory-card .inventory-manager{min-height:150px;padding:6px}
+.inventory-card .fill-panel{max-height:none}
+.inventory-card .inventory-item{padding:6px;gap:8px}
+.inventory-card .inventory-actions{gap:4px}
+.inventory-card .mini{padding:5px 8px}
+}
 </style>
 </head>
 <body>
@@ -188,7 +204,7 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
       <button id="generateInventory" style="margin-top:10px">Generate inventory discovery recipes</button>
     </section>
 
-    <section class="card span6 stretch-card">
+    <section class="card span6 stretch-card inventory-card">
       <h2>Character Inventory</h2>
       <div class="inventory-form">
         <p class="small">Track how many of each ingredient the selected character currently owns. Crafted recipes consume one of each listed ingredient.</p>
