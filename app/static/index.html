@@ -45,6 +45,15 @@ table{width:100%;border-collapse:separate;border-spacing:0;min-width:1050px}
 th,td{padding:10px;border-bottom:1px solid rgba(96,157,150,.14);vertical-align:top}
 th{position:sticky;top:0;background:linear-gradient(180deg,#152930,#0f1c21);color:var(--gold2);z-index:3;text-align:left;letter-spacing:.04em}
 tr:hover td{background:rgba(255,255,255,.025)}
+.mobile-results{display:none}
+.recipe-card{border:1px solid rgba(74,119,122,.58);border-left:4px solid transparent;border-radius:12px;background:linear-gradient(180deg,#081115,#071014);padding:10px;margin-top:10px}
+.recipe-card-header{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.recipe-card-title{display:flex;flex-direction:column;gap:5px;min-width:0}
+.recipe-card-title .ingredient-name{line-height:1.25}
+.recipe-card-action{width:auto;flex:0 0 auto;padding:7px 10px}
+.recipe-card-section{margin-top:8px}
+.recipe-card-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
+.recipe-card-meta span{border:1px solid rgba(74,119,122,.42);border-radius:8px;background:#071014;padding:6px;font-size:.82rem;color:var(--muted);overflow-wrap:anywhere}
 .pill{display:inline-block;padding:.18rem .5rem;border-radius:999px;border:1px solid rgba(74,119,122,.62);margin:.1rem;background:#0d171b;color:var(--muted);font-size:.82rem}
 .known{background:#12391d!important;border-color:#77d690!important;color:#dfffe6!important}
 .unknown{background:#431615!important;border-color:#d35d57!important;color:#ffe4e1!important}
@@ -103,6 +112,12 @@ select,input,textarea,button{padding:8px;border-radius:8px}
 .inventory-card .inventory-item{padding:6px;gap:8px}
 .inventory-card .inventory-actions{gap:4px}
 .inventory-card .mini{padding:5px 8px}
+.table-wrap{display:none}
+.mobile-results{display:block}
+.stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+.recipe-card{border-radius:10px;padding:8px}
+.recipe-card-title{overflow-wrap:anywhere}
+.recipe-card-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 </style>
 </head>
@@ -280,6 +295,7 @@ select,input,textarea,button{padding:8px;border-radius:8px}
           <tbody id="resultsBody"></tbody>
         </table>
       </div>
+      <div id="mobileResults" class="mobile-results"></div>
       <div id="resultsFooter" class="status" style="display:none"></div>
       <button id="showMoreResultsBtn" style="display:none;margin-top:10px">Show more results</button>
     </section>
@@ -599,6 +615,30 @@ function renderVisibleResults() {
   $("resultsBody").innerHTML = visibleResults.map((result, idx) => {
     const sortedItems = [...result.items].sort((a, b) => a.name.localeCompare(b.name));
     return `<tr class="${result.value >= 100 ? "high" : ""} ${result.discoveries.length ? "discover" : ""}"><td>${sortedItems.map(i => `<div class="ingredient-name"><b>${i.name}</b>${rarityBadge(i)}</div>`).join("")}</td><td>${result.type}</td><td>${result.effects.map(effect => `<span class="pill">${effect}</span>`).join(" ")}</td><td>${result.discoveries.length ? result.discoveries.map(discovery => `<span class="pill new">${discovery}</span>`).join(" ") : '<span class="small">None</span>'}</td><td>${result.value} gold<br><span class="small">Estimated value - not exact in-game price</span></td><td>${sortedItems.map(i => `${i.name}: ${i.source}<br><span class="small">${i.rarity_label}</span>`).join("<br>")}</td><td><button class="tinybtn" onclick="markRecipeCreated(${idx})">Created</button></td></tr>`;
+  }).join("");
+  $("mobileResults").innerHTML = visibleResults.map((result, idx) => {
+    const sortedItems = [...result.items].sort((a, b) => a.name.localeCompare(b.name));
+    const cardClasses = ["recipe-card", result.value >= 100 ? "high" : "", result.discoveries.length ? "discover" : ""].filter(Boolean).join(" ");
+    return `<article class="${cardClasses}">
+      <div class="recipe-card-header">
+        <div class="recipe-card-title">${sortedItems.map(i => `<div class="ingredient-name"><b>${i.name}</b>${rarityBadge(i)}</div>`).join("")}</div>
+        <button class="recipe-card-action" onclick="markRecipeCreated(${idx})">Created</button>
+      </div>
+      <div class="recipe-card-section">
+        <div class="small">New discoveries</div>
+        ${result.discoveries.length ? result.discoveries.map(discovery => `<span class="pill new">${discovery}</span>`).join(" ") : '<span class="small">None</span>'}
+      </div>
+      <div class="recipe-card-section">
+        <div class="small">Effects produced</div>
+        ${result.effects.map(effect => `<span class="pill">${effect}</span>`).join(" ")}
+      </div>
+      <div class="recipe-card-meta">
+        <span>${result.type}</span>
+        <span>${result.value} gold</span>
+        <span>${sortedItems.map(i => i.source).join(" + ")}</span>
+        <span>${sortedItems.map(i => i.rarity_label).join(" + ")}</span>
+      </div>
+    </article>`;
   }).join("");
   if (currentResults.length > visibleResultsCount) {
     $("resultsFooter").style.display = "";
