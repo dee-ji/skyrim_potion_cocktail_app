@@ -21,7 +21,7 @@ main{max-width:1450px;margin:auto;padding:18px 14px 60px}
 .card{background:
 linear-gradient(180deg,rgba(255,255,255,.02),transparent 18%),
 linear-gradient(180deg,var(--panel),#091216);
-border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.03),0 0 0 1px rgba(8,14,16,.45);padding:16px;position:relative;overflow:hidden}
+border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.03),0 0 0 1px rgba(8,14,16,.45);padding:16px;position:relative;overflow:hidden;min-width:0}
 .card::before{content:"";position:absolute;inset:0;border-radius:18px;pointer-events:none;background:linear-gradient(135deg,rgba(97,173,166,.04),transparent 28%,transparent 72%,rgba(184,139,67,.05))}
 .span4{grid-column:span 4}
 .span6{grid-column:span 6}
@@ -30,11 +30,11 @@ border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow),inset
 @media(max-width:900px){.span4,.span6,.span8{grid-column:span 12}}
 h2{font-family:Georgia,"Times New Roman",serif;color:var(--gold2);margin:0 0 10px;font-size:1.25rem;letter-spacing:.06em;text-transform:uppercase}
 label{display:block;margin:.55rem 0 .25rem;color:var(--muted);font-size:.93rem}
-select,input,textarea,button{width:100%;border-radius:10px;border:1px solid rgba(74,119,122,.8);background:#081115;color:var(--text);padding:10px;font-size:1rem;font-family:"Palatino Linotype","Book Antiqua",Palatino,Georgia,serif}
+select,input,textarea,button{width:100%;max-width:100%;min-width:0;border-radius:10px;border:1px solid rgba(74,119,122,.8);background:#081115;color:var(--text);padding:10px;font-size:1rem;font-family:"Palatino Linotype","Book Antiqua",Palatino,Georgia,serif}
 select,input,textarea{box-shadow:inset 0 0 0 1px rgba(255,255,255,.02),0 0 0 1px rgba(0,0,0,.15)}
 button{cursor:pointer;background:linear-gradient(180deg,#6a5631,#3b2d18);color:#f7f0e1;border-color:#8e7441;font-weight:700;box-shadow:0 8px 18px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.08)}
 button:hover{filter:brightness(1.08);box-shadow:0 0 0 1px rgba(224,189,122,.15),0 10px 24px rgba(0,0,0,.28)}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 @media(max-width:700px){.row{grid-template-columns:1fr}}
 .small{font-size:.86rem;color:var(--muted)}
 .inventory{min-height:280px;overflow:auto;border:1px solid rgba(74,119,122,.58);border-radius:12px;padding:10px;background:linear-gradient(180deg,#071014,#091418);display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px;align-content:start}
@@ -84,6 +84,7 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
 .inventory-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 .inventory-count{font-weight:800;color:var(--gold2)}
 .mini{width:auto;padding:6px 10px;font-size:.82rem}
+.inventory-form{flex:0 0 auto;min-width:0}
 .stretch-card{display:flex;flex-direction:column;max-height:700px}
 .stretch-card .fill-panel{flex:1;max-height:420px;overflow:auto}
 .selected-item{outline:1px solid var(--gold2);background:rgba(214,173,86,.08)}
@@ -189,28 +190,30 @@ summary{cursor:pointer;color:var(--gold2);font-weight:700}
 
     <section class="card span6 stretch-card">
       <h2>Character Inventory</h2>
-      <p class="small">Track how many of each ingredient the selected character currently owns. Crafted recipes consume one of each listed ingredient.</p>
-      <label>Ingredient</label>
-      <select id="inventoryIngredient"></select>
-      <div class="row">
-        <div>
-          <label>Quantity change</label>
-          <input id="inventoryDelta" type="number" min="1" value="1">
+      <div class="inventory-form">
+        <p class="small">Track how many of each ingredient the selected character currently owns. Crafted recipes consume one of each listed ingredient.</p>
+        <label>Ingredient</label>
+        <select id="inventoryIngredient"></select>
+        <div class="row">
+          <div>
+            <label>Quantity change</label>
+            <input id="inventoryDelta" type="number" min="1" value="1">
+          </div>
+          <div>
+            <label>Set exact quantity</label>
+            <input id="inventorySetQty" type="number" min="0" value="0">
+          </div>
         </div>
-        <div>
-          <label>Set exact quantity</label>
-          <input id="inventorySetQty" type="number" min="0" value="0">
+        <div class="row" style="margin-top:10px">
+          <button id="addInventoryQty">Add quantity</button>
+          <button id="removeInventoryQty">Remove quantity</button>
         </div>
+        <div class="row" style="margin-top:10px">
+          <button id="setInventoryQty">Set exact quantity</button>
+          <button id="refreshInventoryBtn">Refresh inventory</button>
+        </div>
+        <div id="inventoryStatus" class="status">Select a character to manage inventory.</div>
       </div>
-      <div class="row" style="margin-top:10px">
-        <button id="addInventoryQty">Add quantity</button>
-        <button id="removeInventoryQty">Remove quantity</button>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button id="setInventoryQty">Set exact quantity</button>
-        <button id="refreshInventoryBtn">Refresh inventory</button>
-      </div>
-      <div id="inventoryStatus" class="status">Select a character to manage inventory.</div>
       <div id="characterInventoryList" class="inventory-manager fill-panel" style="margin-top:10px"></div>
     </section>
 

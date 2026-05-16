@@ -49,6 +49,20 @@ Then open:
 
 The app initializes and seeds its SQLite database automatically on startup.
 
+## Host In Production
+
+To bind the app to all network interfaces for production hosting:
+
+```bash
+uv run fastapi run app/main.py --host 0.0.0.0
+```
+
+Then open the app from another device or reverse proxy using the server's hostname or IP address:
+
+```text
+http://SERVER_HOST_OR_IP:8000/
+```
+
 ## Database Location
 
 By default, the database file is created at:
